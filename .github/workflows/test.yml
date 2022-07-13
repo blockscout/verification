@@ -27,13 +27,13 @@ jobs:
       - name: remove tmp
         run: |
           ls -a /tmp
-          rm -rf /tmp/*
+          rm -rf /tmp/solc*
 
       - name: cargo test
         run: RUST_BACKTRACE=1 RUST_LOG=info cargo test --locked --workspace --all-features --lib --bins -- --nocapture
 
       - name: show tmp
-        run: ls -a /tmp/
+        run: ls -a /tmp/solc*
 
   integration:
     name: Integration tests
@@ -56,10 +56,10 @@ jobs:
       - name: remove tmp
         run: |
           ls -a /tmp
-          rm -rf /tmp/*
+          rm -rf /tmp/solc*
 
       - name: cargo test
         run: RUST_BACKTRACE=1 RUST_LOG=info cargo test --locked --workspace --test '*' -- --nocapture
 
       - name: show tmp
-        run: ls -a /tmp/
+        run: ls -a /tmp/solc*
