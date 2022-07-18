@@ -13,7 +13,7 @@ pub struct SolidityRouter {
 }
 
 fn new_region(region: Option<String>, endpoint: Option<String>) -> Option<Region> {
-    let region = region.unwrap_or("".to_string());
+    let region = region.unwrap_or_else(|| "".to_string());
     if let Some(endpoint) = endpoint {
         return Some(Region::Custom { region, endpoint });
     }
@@ -43,7 +43,7 @@ impl SolidityRouter {
             ),
             FetcherConfig::S3(s3_config) => {
                 let region = new_region(s3_config.region, s3_config.endpoint)
-                    .ok_or(anyhow::anyhow!("got invalid region/endpoint config"))?;
+                    .ok_or_else(|| anyhow::anyhow!("got invalid region/endpoint config"))?;
                 let bucket = Arc::new(Bucket::new(
                     &s3_config.bucket,
                     region,
