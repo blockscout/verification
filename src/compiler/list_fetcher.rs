@@ -4,6 +4,7 @@ use crate::{
     scheduler,
 };
 use async_trait::async_trait;
+use bytes::Bytes;
 use cron::Schedule;
 use primitive_types::H256;
 use std::{collections::HashMap, fmt::Debug, path::PathBuf, sync::Arc};
@@ -117,11 +118,8 @@ impl ListFetcher {
         }
         Ok(Self { versions, folder })
     }
-}
 
-#[async_trait]
-impl Fetcher for ListFetcher {
-    async fn fetch(&self, ver: &Version) -> Result<PathBuf, FetchError> {
+    async fn fetch_file(&self, ver: &Version) -> Result<(Bytes, H256), FetchError> {
         let file_info = {
             let versions = self.versions.0.read();
             versions
@@ -139,8 +137,15 @@ impl Fetcher for ListFetcher {
             .await
             .map_err(anyhow::Error::msg)
             .map_err(FetchError::Fetch)?;
+        Ok((data, file_info.sha256))
+    }
+}
 
-        super::fetcher::save_executable(data, file_info.sha256, &self.folder, ver).await
+#[async_trait]
+impl Fetcher for ListFetcher {
+    async fn fetch(&self, ver: &Version) -> Result<PathBuf, FetchError> {
+        let (data, hash) = self.fetch_file(ver).await?;
+        super::fetcher::save_executable(data, hash, &self.folder, ver).await
     }
 
     fn all_versions(&self) -> Vec<Version> {

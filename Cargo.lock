@@ -2086,7 +2086,7 @@ version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "30565dc73d2f452e92e07ba1bdc0222efe5d1594586d19292de8ad8e53fdd031"
 dependencies = [
- "quick-xml",
+ "quick-xml 0.22.0",
 ]
 
 [[package]]
@@ -2640,6 +2640,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8533f14c8382aaad0d592c812ac3b826162128b65662331e1127b45c3d18536b"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "quick-xml"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9279fbdacaad3baf559d8cabe0acc3d06e30ea14931af31af79578ac0946decc"
+dependencies = [
+ "memchr",
+ "serde",
 ]
 
 [[package]]
@@ -3898,6 +3908,7 @@ dependencies = [
  "octocrab",
  "parking_lot",
  "primitive-types",
+ "quick-xml 0.23.0",
  "rand 0.8.5",
  "reqwest",
  "rust-s3",

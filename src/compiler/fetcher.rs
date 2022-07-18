@@ -43,6 +43,22 @@ fn create_executable(path: &Path) -> Result<File, std::io::Error> {
         .open(path)
 }
 
+pub fn check_hashsum(bytes: &Bytes, expected: H256) -> Result<(), Mismatch<H256>> {
+    let start = std::time::Instant::now();
+
+    let found = Sha256::digest(bytes);
+    let found = H256::from_slice(&found);
+
+    let took = std::time::Instant::now() - start;
+    // TODO: change to tracing
+    log::debug!("check hashsum of {} bytes took {:?}", bytes.len(), took,);
+    if expected != found {
+        Err(Mismatch::new(expected, found))
+    } else {
+        Ok(())
+    }
+}
+
 pub async fn save_executable(
     data: Bytes,
     sha: H256,
@@ -70,11 +86,11 @@ pub async fn save_executable(
             Ok(())
         })
     };
-
     let check_result = tokio::task::spawn_blocking(move || check_hashsum(&data, sha));
 
-    check_result.await??;
-    save_result.await??;
+    let (check_result, save_result) = futures::join!(check_result, save_result);
+    check_result??;
+    save_result??;
 
     Ok(result)
 }
@@ -108,18 +124,22 @@ pub fn update_compilers<T: PartialEq>(
     }
 }
 
-pub fn check_hashsum(bytes: &Bytes, expected: H256) -> Result<(), Mismatch<H256>> {
-    let start = std::time::Instant::now();
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str::FromStr;
 
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    let found = H256::from_slice(&hasher.finalize());
-
-    let took = std::time::Instant::now() - start;
-    log::debug!("check hashsum of {} bytes took {:?}", bytes.len(), took,);
-    if expected != found {
-        Err(Mismatch::new(expected, found))
-    } else {
-        Ok(())
+    #[tokio::test]
+    async fn save_text() {
+        let tmp_dir = std::env::temp_dir();
+        let data = "this is a compiler binary";
+        let bytes = Bytes::from_static(data.as_bytes());
+        let sha = Sha256::digest(data.as_bytes());
+        let version = Version::from_str("v0.4.10+commit.f0d539ae").unwrap();
+        let file = save_executable(bytes, H256::from_slice(&sha), &tmp_dir, &version)
+            .await
+            .unwrap();
+        let content = tokio::fs::read_to_string(file).await.unwrap();
+        assert_eq!(data, content);
     }
 }
