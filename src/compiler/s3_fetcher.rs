@@ -2,6 +2,7 @@ use super::{fetcher::FetchError, Fetcher, Version};
 use crate::{compiler::fetcher::update_compilers, scheduler};
 use async_trait::async_trait;
 use cron::Schedule;
+use primitive_types::H256;
 use s3::Bucket;
 use std::{collections::HashSet, path::PathBuf, str::FromStr, sync::Arc};
 use thiserror::Error;
@@ -123,19 +124,12 @@ impl Fetcher for S3Fetcher {
         if status_code != 200 {
             return Err(status_code_error("executable file", status_code));
         }
-        // TODO: use hash
-        let _ = hash;
-        super::fetcher::save_executable(data.into(), &self.folder, ver).await
+        super::fetcher::save_executable(data.into(), H256::from_slice(&hash), &self.folder, ver)
+            .await
     }
 
     fn all_versions(&self) -> Vec<Version> {
         let versions = self.versions.0.read();
         versions.iter().cloned().collect()
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use s3::{creds::Credentials, Region};
 }

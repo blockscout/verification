@@ -31,6 +31,7 @@ fn new_region(region: Option<String>, endpoint: Option<String>) -> Option<Region
 
 impl SolidityRouter {
     pub async fn new(config: SolidityConfiguration) -> anyhow::Result<Self> {
+        let dir = config.compiler_folder.clone();
         let fetcher: Arc<dyn Fetcher> = match config.fetcher {
             FetcherConfig::List(fetcher_config) => Arc::new(
                 ListFetcher::new(
@@ -65,6 +66,7 @@ impl SolidityRouter {
             }
         };
         let compilers = Compilers::new(fetcher);
+        compilers.load_from_dir(&dir).await;
         Ok(Self {
             compilers: web::Data::new(compilers),
         })

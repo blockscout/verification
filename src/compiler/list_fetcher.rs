@@ -12,7 +12,7 @@ use url::Url;
 
 type VersionsMap = HashMap<Version, FileInfo>;
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 struct FileInfo {
     pub url: Url,
     pub sha256: H256,
@@ -122,15 +122,15 @@ impl ListFetcher {
 #[async_trait]
 impl Fetcher for ListFetcher {
     async fn fetch(&self, ver: &Version) -> Result<PathBuf, FetchError> {
-        let download_url = {
+        let file_info = {
             let versions = self.versions.0.read();
-            let file_info = versions
+            versions
                 .get(ver)
-                .ok_or_else(|| FetchError::NotFound(ver.clone()))?;
-            file_info.url.clone()
+                .cloned()
+                .ok_or_else(|| FetchError::NotFound(ver.clone()))?
         };
 
-        let response = reqwest::get(download_url)
+        let response = reqwest::get(file_info.url)
             .await
             .map_err(anyhow::Error::msg)
             .map_err(FetchError::Fetch)?;
@@ -140,7 +140,7 @@ impl Fetcher for ListFetcher {
             .map_err(anyhow::Error::msg)
             .map_err(FetchError::Fetch)?;
 
-        super::fetcher::save_executable(data, &self.folder, ver).await
+        super::fetcher::save_executable(data, file_info.sha256, &self.folder, ver).await
     }
 
     fn all_versions(&self) -> Vec<Version> {
@@ -330,7 +330,6 @@ mod tests {
 
     #[tokio::test]
     async fn check_refresh_versions() {
-        env_logger::init();
         let mock_server = MockServer::start().await;
 
         // mock list.json server response with empty list

@@ -1,6 +1,10 @@
+use crate::types::Mismatch;
+
 use super::version::Version;
 use async_trait::async_trait;
 use bytes::Bytes;
+use primitive_types::H256;
+use sha2::{Digest, Sha256};
 use std::{
     fs::{File, OpenOptions},
     io::ErrorKind,
@@ -14,11 +18,13 @@ pub enum FetchError {
     #[error("version {0} not found")]
     NotFound(Version),
     #[error("couldn't fetch the file: {0}")]
-    Fetch(anyhow::Error),
+    Fetch(#[from] anyhow::Error),
+    #[error("hashsum of fetched file mismatch: {0}")]
+    HashMismatch(#[from] Mismatch<H256>),
     #[error("couldn't create file: {0}")]
-    File(std::io::Error),
+    File(#[from] std::io::Error),
     #[error("tokio sheduling error: {0}")]
-    Schedule(tokio::task::JoinError),
+    Schedule(#[from] tokio::task::JoinError),
 }
 
 #[async_trait]
@@ -39,29 +45,37 @@ fn create_executable(path: &Path) -> Result<File, std::io::Error> {
 
 pub async fn save_executable(
     data: Bytes,
+    sha: H256,
     path: &Path,
     ver: &Version,
 ) -> Result<PathBuf, FetchError> {
     let folder = path.join(ver.to_string());
     let file = folder.join("solc");
     let result = file.clone();
-    tokio::task::spawn_blocking(move || -> Result<(), FetchError> {
-        std::fs::create_dir_all(&folder).map_err(FetchError::File)?;
-        std::fs::remove_file(file.as_path())
-            .or_else(|e| {
+
+    let save_result = {
+        let file = file.clone();
+        let data = data.clone();
+        tokio::task::spawn_blocking(move || -> Result<(), FetchError> {
+            std::fs::create_dir_all(&folder)?;
+            std::fs::remove_file(file.as_path()).or_else(|e| {
                 if e.kind() == ErrorKind::NotFound {
                     Ok(())
                 } else {
                     Err(e)
                 }
-            })
-            .map_err(FetchError::File)?;
-        let mut file = create_executable(file.as_path()).map_err(FetchError::File)?;
-        std::io::copy(&mut data.as_ref(), &mut file).map_err(FetchError::File)?;
-        Ok(())
-    })
-    .await
-    .map_err(FetchError::Schedule)??;
+            })?;
+            let mut file = create_executable(file.as_path())?;
+            std::io::copy(&mut data.as_ref(), &mut file)?;
+            Ok(())
+        })
+    };
+
+    let check_result = tokio::task::spawn_blocking(move || check_hashsum(&data, sha));
+
+    check_result.await??;
+    save_result.await??;
+
     Ok(result)
 }
 
@@ -91,5 +105,21 @@ pub fn update_compilers<T: PartialEq>(
         );
     } else {
         log::info!("no new versions found")
+    }
+}
+
+pub fn check_hashsum(bytes: &Bytes, expected: H256) -> Result<(), Mismatch<H256>> {
+    let start = std::time::Instant::now();
+
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    let found = H256::from_slice(&hasher.finalize());
+
+    let took = std::time::Instant::now() - start;
+    log::debug!("check hashsum of {} bytes took {:?}", bytes.len(), took,);
+    if expected != found {
+        Err(Mismatch::new(expected, found))
+    } else {
+        Ok(())
     }
 }
