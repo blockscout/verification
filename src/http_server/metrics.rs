@@ -1,3 +1,5 @@
+use std::net::SocketAddr;
+
 use lazy_static::lazy_static;
 
 use actix_web::{dev::Server, App, HttpServer};
@@ -7,13 +9,13 @@ use prometheus::{register_int_counter_vec, IntCounterVec, Registry};
 lazy_static! {
     pub static ref VERIFICATION: IntCounterVec = register_int_counter_vec!(
         "verify_contract",
-        "contract verification metrics",
+        "count verification result statuses",
         &["language", "endpoint", "status"]
     )
     .unwrap();
 }
 
-fn registry() -> Registry {
+fn build_registry() -> Registry {
     let registry = Registry::new();
     registry.register(Box::new(VERIFICATION.clone())).unwrap();
     registry
@@ -21,35 +23,38 @@ fn registry() -> Registry {
 
 #[derive(Clone)]
 pub struct Metrics {
-    private: PrometheusMetrics,
-    public: PrometheusMetrics,
+    endpoint: PrometheusMetrics,
+    middleware: PrometheusMetrics,
 }
 
 impl Metrics {
     pub fn new(endpoint: String) -> Self {
-        let shared_registry = registry();
+        let shared_registry = build_registry();
 
-        let private = PrometheusMetricsBuilder::new("private_verification")
+        let endpoint = PrometheusMetricsBuilder::new("verification_metrics_endpoint")
             .registry(shared_registry.clone())
             .endpoint(&endpoint)
             .build()
             .unwrap();
-        let public = PrometheusMetricsBuilder::new("verification")
+        let middleware = PrometheusMetricsBuilder::new("verification")
             .registry(shared_registry)
             .build()
             .unwrap();
 
-        Self { private, public }
+        Self {
+            endpoint,
+            middleware,
+        }
     }
 
-    pub fn public(&self) -> &PrometheusMetrics {
-        &self.public
+    pub fn middleware(&self) -> &PrometheusMetrics {
+        &self.middleware
     }
 
-    pub fn run_private_server(&self, port: u16) -> Server {
-        let private = self.private.clone();
-        HttpServer::new(move || App::new().wrap(private.clone()))
-            .bind(("0.0.0.0", port))
+    pub fn run_server(&self, addr: SocketAddr) -> Server {
+        let endpoint = self.endpoint.clone();
+        HttpServer::new(move || App::new().wrap(endpoint.clone()))
+            .bind(addr)
             .unwrap()
             .run()
     }
