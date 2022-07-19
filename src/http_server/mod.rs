@@ -23,7 +23,6 @@ pub async fn run(config: Config) -> std::io::Result<()> {
             .expect("couldn't initialize the app"),
     );
     let metrics = Metrics::new(metrics_endpoint);
-    let metrics_future = metrics.run_server(metrics_addr);
     let server_future = {
         let middleware = metrics.middleware().clone();
         HttpServer::new(move || {
@@ -34,6 +33,12 @@ pub async fn run(config: Config) -> std::io::Result<()> {
         .bind(socket_addr)?
         .run()
     };
-    future::try_join(server_future, metrics_future).await?;
+    let server_future = tokio::spawn(async move { server_future.await });
+    let metrics_future = tokio::spawn(async move { metrics.run_server(metrics_addr).await });
+
+    let (server_future, metrics_future) = future::try_join(server_future, metrics_future).await?;
+
+    server_future?;
+    metrics_future?;
     Ok(())
 }

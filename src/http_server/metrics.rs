@@ -9,7 +9,7 @@ use prometheus::{register_int_counter_vec, IntCounterVec, Registry};
 lazy_static! {
     pub static ref VERIFICATION: IntCounterVec = register_int_counter_vec!(
         "verify_contract",
-        "count verification result statuses",
+        "number of contract verifications",
         &["language", "endpoint", "status"]
     )
     .unwrap();
