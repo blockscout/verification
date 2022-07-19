@@ -1,5 +1,5 @@
 pub mod handlers;
-mod metrics;
+pub mod metrics;
 mod routers;
 
 pub use self::routers::{configure_router, AppRouter, Router};

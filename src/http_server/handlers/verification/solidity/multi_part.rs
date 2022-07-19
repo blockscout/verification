@@ -8,7 +8,6 @@ use crate::{
         },
         metrics,
     },
-    VerificationStatus,
 };
 use actix_web::{
     error,
@@ -32,17 +31,8 @@ pub async fn verify(
         creation_tx_input: &params.creation_bytecode,
         deployed_bytecode: &params.deployed_bytecode,
     };
-    let result = compile_and_verify_handler(&compilers, input, true)
-        .await
-        .map(Json);
-    if let Ok(response) = result.as_ref() {
-        let status = match response.0.status {
-            VerificationStatus::Ok => "ok",
-            VerificationStatus::Failed => "fail",
-        };
-        metrics::VERIFICATION
-            .with_label_values(&["solidity", "multi-part", status])
-            .inc();
-    };
-    result
+
+    let response = compile_and_verify_handler(&compilers, input, true).await?;
+    metrics::count_verify_contract(&response, "multi-part");
+    Ok(Json(response))
 }
