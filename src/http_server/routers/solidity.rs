@@ -1,7 +1,7 @@
 use super::Router;
 use crate::{
     compiler::{Compilers, Fetcher, ListFetcher, S3Fetcher},
-    config::{FetcherConfig, SolidityConfiguration},
+    config::{FetcherConfig, S3FetcherConfig, SolidityConfiguration},
     http_server::handlers::{multi_part, standard_json, version_list},
 };
 use actix_web::web;
@@ -29,6 +29,23 @@ fn new_region(region: Option<String>, endpoint: Option<String>) -> Option<Region
     }
 }
 
+fn new_bucket(config: S3FetcherConfig) -> anyhow::Result<Arc<Bucket>> {
+    let region = new_region(config.region, config.endpoint)
+        .ok_or_else(|| anyhow::anyhow!("got invalid region/endpoint config"))?;
+    let bucket = Arc::new(Bucket::new(
+        &config.bucket,
+        region,
+        Credentials::new(
+            config.access_key.as_deref(),
+            config.secret_key.as_deref(),
+            None,
+            None,
+            None,
+        )?,
+    )?);
+    Ok(bucket)
+}
+
 impl SolidityRouter {
     pub async fn new(config: SolidityConfiguration) -> anyhow::Result<Self> {
         let dir = config.compiler_folder.clone();
@@ -41,29 +58,14 @@ impl SolidityRouter {
                 )
                 .await?,
             ),
-            FetcherConfig::S3(s3_config) => {
-                let region = new_region(s3_config.region, s3_config.endpoint)
-                    .ok_or_else(|| anyhow::anyhow!("got invalid region/endpoint config"))?;
-                let bucket = Arc::new(Bucket::new(
-                    &s3_config.bucket,
-                    region,
-                    Credentials::new(
-                        s3_config.access_key.as_deref(),
-                        s3_config.secret_key.as_deref(),
-                        None,
-                        None,
-                        None,
-                    )?,
-                )?);
-                Arc::new(
-                    S3Fetcher::new(
-                        bucket,
-                        config.compiler_folder,
-                        Some(config.refresh_versions_schedule),
-                    )
-                    .await?,
+            FetcherConfig::S3(s3_config) => Arc::new(
+                S3Fetcher::new(
+                    new_bucket(s3_config)?,
+                    config.compiler_folder,
+                    Some(config.refresh_versions_schedule),
                 )
-            }
+                .await?,
+            ),
         };
         let compilers = Compilers::new(fetcher);
         compilers.load_from_dir(&dir).await;

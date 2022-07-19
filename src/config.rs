@@ -50,6 +50,7 @@ pub struct S3FetcherConfig {
 }
 
 #[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub enum FetcherConfig {
     List(ListFetcherConfig),
     S3(S3FetcherConfig),

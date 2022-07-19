@@ -67,7 +67,6 @@ pub async fn save_executable(
 ) -> Result<PathBuf, FetchError> {
     let folder = path.join(ver.to_string());
     let file = folder.join("solc");
-    let result = file.clone();
 
     let save_result = {
         let file = file.clone();
@@ -92,7 +91,7 @@ pub async fn save_executable(
     check_result??;
     save_result??;
 
-    Ok(result)
+    Ok(file)
 }
 
 pub fn update_compilers<T: PartialEq>(
