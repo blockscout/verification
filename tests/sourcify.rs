@@ -1,9 +1,9 @@
-use std::sync::Arc;
 use actix_web::{
     test::{self, TestRequest},
     App,
 };
 use serde_json::json;
+use std::sync::Arc;
 use verification::{configure_router, AppRouter, Config, VerificationResponse, VerificationStatus};
 
 #[actix_rt::test]

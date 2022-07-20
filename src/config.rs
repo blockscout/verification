@@ -30,23 +30,41 @@ impl Default for ServerConfiguration {
 #[derive(Deserialize, Clone, PartialEq, Debug)]
 pub struct ListFetcherConfig {
     pub compilers_list_url: Url,
+    #[serde(with = "serde_with::rust::display_fromstr")]
+    pub refresh_versions_schedule: Schedule,
 }
 
 impl Default for ListFetcherConfig {
     fn default() -> Self {
         Self {
             compilers_list_url: Url::try_from(DEFAULT_COMPILER_LIST).expect("valid url"),
+            refresh_versions_schedule: Schedule::from_str("0 0 * * * * *").unwrap(), // every hour
         }
     }
 }
 
-#[derive(Deserialize, Default, Clone, PartialEq, Debug)]
+#[derive(Deserialize, Clone, PartialEq, Debug)]
 pub struct S3FetcherConfig {
     pub access_key: Option<String>,
     pub secret_key: Option<String>,
     pub region: Option<String>,
     pub endpoint: Option<String>,
     pub bucket: String,
+    #[serde(with = "serde_with::rust::display_fromstr")]
+    pub refresh_versions_schedule: Schedule,
+}
+
+impl Default for S3FetcherConfig {
+    fn default() -> Self {
+        Self {
+            access_key: Default::default(),
+            secret_key: Default::default(),
+            region: Default::default(),
+            endpoint: Default::default(),
+            bucket: Default::default(),
+            refresh_versions_schedule: Schedule::from_str("0 0 * * * * *").unwrap(),
+        }
+    }
 }
 
 #[derive(Deserialize, Clone, PartialEq, Debug)]
@@ -68,8 +86,6 @@ pub struct SolidityConfiguration {
     pub enabled: bool,
     pub fetcher: FetcherConfig,
     pub compiler_folder: PathBuf,
-    #[serde(with = "serde_with::rust::display_fromstr")]
-    pub refresh_versions_schedule: Schedule,
 }
 
 impl Default for SolidityConfiguration {
@@ -78,7 +94,6 @@ impl Default for SolidityConfiguration {
             enabled: true,
             fetcher: Default::default(),
             compiler_folder: "compilers/".into(),
-            refresh_versions_schedule: Schedule::from_str("0 0 * * * * *").unwrap(), // every hour
         }
     }
 }

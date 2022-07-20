@@ -29,8 +29,8 @@ fn new_region(region: Option<String>, endpoint: Option<String>) -> Option<Region
     }
 }
 
-fn new_bucket(config: S3FetcherConfig) -> anyhow::Result<Arc<Bucket>> {
-    let region = new_region(config.region, config.endpoint)
+fn new_bucket(config: &S3FetcherConfig) -> anyhow::Result<Arc<Bucket>> {
+    let region = new_region(config.region.clone(), config.endpoint.clone())
         .ok_or_else(|| anyhow::anyhow!("got invalid region/endpoint config"))?;
     let bucket = Arc::new(Bucket::new(
         &config.bucket,
@@ -54,15 +54,15 @@ impl SolidityRouter {
                 ListFetcher::new(
                     fetcher_config.compilers_list_url,
                     config.compiler_folder,
-                    Some(config.refresh_versions_schedule),
+                    Some(fetcher_config.refresh_versions_schedule),
                 )
                 .await?,
             ),
             FetcherConfig::S3(s3_config) => Arc::new(
                 S3Fetcher::new(
-                    new_bucket(s3_config)?,
+                    new_bucket(&s3_config)?,
                     config.compiler_folder,
-                    Some(config.refresh_versions_schedule),
+                    Some(s3_config.refresh_versions_schedule),
                 )
                 .await?,
             ),

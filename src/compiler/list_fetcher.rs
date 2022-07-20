@@ -145,7 +145,7 @@ impl ListFetcher {
 impl Fetcher for ListFetcher {
     async fn fetch(&self, ver: &Version) -> Result<PathBuf, FetchError> {
         let (data, hash) = self.fetch_file(ver).await?;
-        super::fetcher::save_executable(data, hash, &self.folder, ver).await
+        super::fetcher::write_executable(data, hash, &self.folder, ver).await
     }
 
     fn all_versions(&self) -> Vec<Version> {

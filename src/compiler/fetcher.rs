@@ -59,7 +59,7 @@ pub fn check_hashsum(bytes: &Bytes, expected: H256) -> Result<(), Mismatch<H256>
     }
 }
 
-pub async fn save_executable(
+pub async fn write_executable(
     data: Bytes,
     sha: H256,
     path: &Path,
@@ -135,7 +135,7 @@ mod tests {
         let bytes = Bytes::from_static(data.as_bytes());
         let sha = Sha256::digest(data.as_bytes());
         let version = Version::from_str("v0.4.10+commit.f0d539ae").unwrap();
-        let file = save_executable(bytes, H256::from_slice(&sha), &tmp_dir, &version)
+        let file = write_executable(bytes, H256::from_slice(&sha), &tmp_dir, &version)
             .await
             .unwrap();
         let content = tokio::fs::read_to_string(file).await.unwrap();
