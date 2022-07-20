@@ -5,7 +5,7 @@ use serde::Deserialize;
 use std::{net::SocketAddr, num::NonZeroUsize, path::PathBuf, str::FromStr};
 use url::Url;
 
-#[derive(Deserialize, Clone, Default)]
+#[derive(Deserialize, Clone, Default, PartialEq, Debug)]
 #[serde(default)]
 pub struct Config {
     pub server: ServerConfiguration,
@@ -13,7 +13,7 @@ pub struct Config {
     pub sourcify: SourcifyConfiguration,
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, PartialEq, Debug)]
 #[serde(default)]
 pub struct ServerConfiguration {
     pub addr: SocketAddr,
@@ -27,7 +27,7 @@ impl Default for ServerConfiguration {
     }
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, PartialEq, Debug)]
 pub struct ListFetcherConfig {
     pub compilers_list_url: Url,
 }
@@ -40,7 +40,7 @@ impl Default for ListFetcherConfig {
     }
 }
 
-#[derive(Deserialize, Default, Clone)]
+#[derive(Deserialize, Default, Clone, PartialEq, Debug)]
 pub struct S3FetcherConfig {
     pub access_key: Option<String>,
     pub secret_key: Option<String>,
@@ -49,7 +49,7 @@ pub struct S3FetcherConfig {
     pub bucket: String,
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, PartialEq, Debug)]
 #[serde(rename_all = "camelCase")]
 pub enum FetcherConfig {
     List(ListFetcherConfig),
@@ -62,7 +62,7 @@ impl Default for FetcherConfig {
     }
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, PartialEq, Debug)]
 #[serde(default)]
 pub struct SolidityConfiguration {
     pub enabled: bool,
@@ -83,7 +83,7 @@ impl Default for SolidityConfiguration {
     }
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, PartialEq, Debug)]
 #[serde(default)]
 pub struct SourcifyConfiguration {
     pub enabled: bool,

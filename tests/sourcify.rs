@@ -1,5 +1,4 @@
 use std::sync::Arc;
-
 use actix_web::{
     test::{self, TestRequest},
     App,
