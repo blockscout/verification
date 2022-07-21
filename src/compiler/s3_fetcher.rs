@@ -49,7 +49,7 @@ impl Versions {
             .into_iter()
             .filter_map(|x| x.common_prefixes)
             .flatten()
-            .filter_map(|x| Version::from_str(&x.prefix).ok())
+            .filter_map(|v| Version::from_str(v.prefix.trim_end_matches("/")).ok())
             .collect();
 
         Ok(fetched_versions)
@@ -142,12 +142,12 @@ impl Fetcher for S3Fetcher {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
     use super::*;
+    use pretty_assertions::assert_eq;
     use s3::{creds::Credentials, Region};
     use serde::Serialize;
     use sha2::{Digest, Sha256};
+    use std::time::Duration;
     use wiremock::{
         matchers::{method, path},
         Mock, MockServer, ResponseTemplate,
@@ -182,7 +182,10 @@ mod tests {
             name: p.into(),
             prefix: p.into(),
             is_truncated: false,
-            common_prefixes: prefixes.map(|prefix| Prefix { prefix }).collect(),
+            common_prefixes: prefixes
+                .map(|p| p + "/")
+                .map(|prefix| Prefix { prefix })
+                .collect(),
         };
         let data = quick_xml::se::to_string(&value).unwrap();
         Mock::given(method("GET"))
