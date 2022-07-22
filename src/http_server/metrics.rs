@@ -1,12 +1,11 @@
-use std::net::SocketAddr;
-
-use lazy_static::lazy_static;
-
 use actix_web::{dev::Server, App, HttpServer};
 use actix_web_prom::{PrometheusMetrics, PrometheusMetricsBuilder};
+use lazy_static::lazy_static;
 use prometheus::{
-    register_histogram, register_int_counter_vec, Histogram, IntCounterVec, Registry,
+    register_histogram, register_int_counter, register_int_counter_vec, Histogram, IntCounter,
+    IntCounterVec, Registry,
 };
+use std::net::SocketAddr;
 
 use crate::{VerificationResponse, VerificationStatus};
 
@@ -17,10 +16,20 @@ lazy_static! {
         &["language", "endpoint", "status"],
     )
     .unwrap();
+    pub static ref DOWNLOAD_CACHE_TOTAL: IntCounter = register_int_counter!(
+        "download_cache_total",
+        "total number of get calls in DownloadCache",
+    )
+    .unwrap();
+    pub static ref DOWNLOAD_CACHE_HITS: IntCounter = register_int_counter!(
+        "donwload_cache_hits",
+        "number of cache hits in DownloadCache",
+    )
+    .unwrap();
     pub static ref COMPILER_FETCH_TIME: Histogram = register_histogram!(
         "compiler_fetch_time",
         "donwload time for compilers",
-        vec![0.1, 0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 9.0, 20.0],
+        vec![0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0, 20.0],
     )
     .unwrap();
     pub static ref COMPILE_TIME: Histogram =
@@ -40,6 +49,12 @@ pub fn count_verify_contract(response: &VerificationResponse, method: &str) {
 fn build_registry() -> Registry {
     let registry = Registry::new();
     registry.register(Box::new(VERIFICATION.clone())).unwrap();
+    registry
+        .register(Box::new(DOWNLOAD_CACHE_TOTAL.clone()))
+        .unwrap();
+    registry
+        .register(Box::new(DOWNLOAD_CACHE_HITS.clone()))
+        .unwrap();
     registry
         .register(Box::new(COMPILER_FETCH_TIME.clone()))
         .unwrap();

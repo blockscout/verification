@@ -39,8 +39,12 @@ impl DownloadCache {
         fetcher: &D,
         ver: &Version,
     ) -> Result<PathBuf, FetchError> {
+        metrics::DOWNLOAD_CACHE_TOTAL.inc();
         match self.try_get(ver).await {
-            Some(file) => Ok(file),
+            Some(file) => {
+                metrics::DOWNLOAD_CACHE_HITS.inc();
+                Ok(file)
+            }
             None => {
                 let _timer = metrics::COMPILER_FETCH_TIME.start_timer();
                 self.fetch(fetcher, ver).await
@@ -68,9 +72,7 @@ impl DownloadCache {
             }
         }
     }
-}
 
-impl DownloadCache {
     pub async fn load_from_dir(&self, dir: &PathBuf) -> std::io::Result<()> {
         let paths = DownloadCache::read_dir_paths(dir)?;
         let versions = DownloadCache::filter_versions(paths);
