@@ -114,21 +114,21 @@ struct Versions(Arc<parking_lot::RwLock<VersionsMap>>);
 
 impl Versions {
     fn spawn_refresh_job(self, versions_list_url: Url, cron_schedule: Schedule) {
-        log::info!("spawn version refresh job");
+        tracing::info!("spawn version refresh job");
         scheduler::spawn_job(cron_schedule, "refresh compiler versions", move || {
             let versions_list_url = versions_list_url.clone();
             let versions = self.clone();
             async move {
                 let refresh_result = versions.refresh_versions(&versions_list_url).await;
                 if let Err(err) = refresh_result {
-                    log::error!("error during version refresh: {}", err);
+                    tracing::error!("error during version refresh: {}", err);
                 };
             }
         });
     }
 
     async fn refresh_versions(&self, versions_list_url: &Url) -> anyhow::Result<()> {
-        log::info!("looking for new compilers versions");
+        tracing::info!("looking for new compilers versions");
         let fetched_versions = try_fetch_versions(versions_list_url)
             .await
             .map_err(anyhow::Error::msg)?;
@@ -146,13 +146,13 @@ impl Versions {
                 let new_len = versions.len();
                 (old_len, new_len)
             };
-            log::info!(
+            tracing::info!(
                 "found new compiler versions. old length: {}, new length: {}",
                 old_len,
                 new_len,
             );
         } else {
-            log::info!("no new versions found")
+            tracing::info!("no new versions found")
         }
         Ok(())
     }
@@ -204,7 +204,7 @@ pub fn check_hashsum(bytes: &Bytes, expected: H256) -> Result<(), Mismatch<H256>
     let found = H256::from_slice(&hasher.finalize());
 
     let took = std::time::Instant::now() - start;
-    log::debug!("check hashsum of {} bytes took {:?}", bytes.len(), took,);
+    tracing::debug!("check hashsum of {} bytes took {:?}", bytes.len(), took,);
     if expected != found {
         Err(Mismatch::new(expected, found))
     } else {

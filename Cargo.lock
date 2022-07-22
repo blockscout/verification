@@ -3777,7 +3777,6 @@ dependencies = [
  "futures",
  "hex",
  "lazy_static",
- "log",
  "minicbor",
  "octocrab",
  "parking_lot",
@@ -3793,6 +3792,7 @@ dependencies = [
  "sscanf",
  "thiserror",
  "tokio",
+ "tracing",
  "url",
  "wiremock",
 ]
