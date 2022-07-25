@@ -49,7 +49,7 @@ impl Versions {
             .into_iter()
             .filter_map(|x| x.common_prefixes)
             .flatten()
-            .filter_map(|v| Version::from_str(v.prefix.trim_end_matches("/")).ok())
+            .filter_map(|v| Version::from_str(v.prefix.trim_end_matches('/')).ok())
             .collect();
 
         Ok(fetched_versions)
