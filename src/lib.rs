@@ -5,6 +5,7 @@ mod consts;
 mod http_server;
 mod scheduler;
 mod solidity;
+mod tracer;
 mod types;
 
 #[cfg(test)]
@@ -17,3 +18,4 @@ pub use http_server::{
     handlers::verification::{VerificationResponse, VerificationResult, VerificationStatus},
     run as run_http_server, AppRouter, Router,
 };
+pub use tracer::init_logs;
