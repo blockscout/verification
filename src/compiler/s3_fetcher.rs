@@ -1,5 +1,5 @@
 use super::{fetcher::FetchError, Fetcher, Version};
-use crate::{compiler::fetcher::update_compilers, scheduler};
+use crate::compiler::fetcher::{RefreshableVersions, VersionsFetcher};
 use async_trait::async_trait;
 use bytes::Bytes;
 use cron::Schedule;
@@ -10,37 +10,30 @@ use thiserror::Error;
 use tokio::task::JoinHandle;
 
 #[derive(Error, Debug)]
-enum ListError {
+pub enum ListError {
     #[error("listing s3 directory failed: {0}")]
     Fetch(s3::error::S3Error),
 }
 
-#[derive(Default, Clone)]
-struct Versions(Arc<parking_lot::RwLock<HashSet<Version>>>);
+#[derive(Clone, Debug)]
+struct S3VersionsFetcher {
+    bucket: Arc<Bucket>,
+}
 
-impl Versions {
-    fn spawn_refresh_job(self, bucket: Arc<Bucket>, cron_schedule: Schedule) {
-        log::info!("spawn version refresh job");
-        scheduler::spawn_job(cron_schedule, "refresh compiler version", move || {
-            let bucket = bucket.clone();
-            let versions = self.clone();
-            async move {
-                log::info!("looking for new compilers versions");
-                let refresh_result = Self::fetch_versions(&bucket).await;
-                match refresh_result {
-                    Ok(fetched_versions) => {
-                        update_compilers(&versions.0, fetched_versions, |list| list.len());
-                    }
-                    Err(err) => {
-                        log::error!("error during version refresh: {}", err);
-                    }
-                }
-            }
-        });
+impl S3VersionsFetcher {
+    fn new(bucket: Arc<Bucket>) -> Self {
+        Self { bucket }
     }
+}
 
-    async fn fetch_versions(bucket: &Bucket) -> Result<HashSet<Version>, ListError> {
-        let folders = bucket
+#[async_trait]
+impl VersionsFetcher for S3VersionsFetcher {
+    type Error = ListError;
+    type Response = HashSet<Version>;
+
+    async fn fetch_versions(&self) -> Result<Self::Response, Self::Error> {
+        let folders = self
+            .bucket
             .list("".to_string(), Some("/".to_string()))
             .await
             .map_err(ListError::Fetch)?;
@@ -59,7 +52,7 @@ impl Versions {
 pub struct S3Fetcher {
     bucket: Arc<Bucket>,
     folder: PathBuf,
-    versions: Versions,
+    versions: RefreshableVersions<HashSet<Version>>,
 }
 
 fn spawn_fetch_s3(
@@ -89,12 +82,12 @@ impl S3Fetcher {
         folder: PathBuf,
         refresh_schedule: Option<Schedule>,
     ) -> anyhow::Result<S3Fetcher> {
-        let versions = Versions::fetch_versions(&bucket).await?;
-        let versions = Versions(Arc::new(parking_lot::RwLock::new(versions)));
+        let versions_fetcher = S3VersionsFetcher::new(bucket.clone());
+        let versions = RefreshableVersions::new(versions_fetcher.fetch_versions().await?);
         if let Some(cron_schedule) = refresh_schedule {
             versions
                 .clone()
-                .spawn_refresh_job(bucket.clone(), cron_schedule)
+                .spawn_refresh_job(versions_fetcher, cron_schedule)
         }
         Ok(S3Fetcher {
             bucket,
@@ -105,7 +98,7 @@ impl S3Fetcher {
 
     async fn fetch_file(&self, ver: &Version) -> Result<(Bytes, H256), FetchError> {
         {
-            let versions = self.versions.0.read();
+            let versions = self.versions.read();
             if !versions.contains(ver) {
                 return Err(FetchError::NotFound(ver.clone()));
             }
@@ -114,6 +107,7 @@ impl S3Fetcher {
         let folder = PathBuf::from(ver.to_string());
         let data = spawn_fetch_s3(self.bucket.clone(), folder.join("solc"));
         let hash = spawn_fetch_s3(self.bucket.clone(), folder.join("sha256.hash"));
+        let hash = hash.await;
         let (data, hash) = futures::join!(data, hash);
         let (hash, status_code) = hash??;
         if status_code != 200 {
@@ -135,7 +129,7 @@ impl Fetcher for S3Fetcher {
     }
 
     fn all_versions(&self) -> Vec<Version> {
-        let versions = self.versions.0.read();
+        let versions = self.versions.read();
         versions.iter().cloned().collect()
     }
 }
@@ -265,7 +259,7 @@ mod tests {
         .mount(&mock_server)
         .await;
 
-        let versions = Versions::fetch_versions(&test_bucket(mock_server.uri()))
+        let versions = RefreshableVersions::fetch_versions(&test_bucket(mock_server.uri()))
             .await
             .unwrap();
         let expected_versions = HashSet::from_iter(expected_versions.into_iter());
@@ -298,7 +292,7 @@ mod tests {
         .unwrap();
 
         {
-            let versions = fetcher.versions.0.read();
+            let versions = fetcher.versions.read();
             assert!(versions.is_empty());
         }
 
@@ -315,7 +309,7 @@ mod tests {
             tokio::time::sleep(Duration::from_secs(2)).await;
 
             let expected_versions = HashSet::from_iter(expected_versions.into_iter().cloned());
-            let versions = fetcher.versions.0.read();
+            let versions = fetcher.versions.read();
             assert_eq!(expected_versions, *versions);
         }
 
@@ -335,7 +329,7 @@ mod tests {
             tokio::time::sleep(Duration::from_secs(2)).await;
 
             let expected_versions = HashSet::from_iter(expected_versions.into_iter().cloned());
-            let versions = fetcher.versions.0.read();
+            let versions = fetcher.versions.read();
             assert_eq!(expected_versions, *versions);
         }
     }

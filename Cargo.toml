@@ -37,6 +37,7 @@ serde_with = "1.14"
 ethabi = "17.0"
 rust-s3 = "0.31"
 sha2 = "0.10"
+len-trait = "0.6.1"
 
 [dev-dependencies]
 const_format = "0.2"

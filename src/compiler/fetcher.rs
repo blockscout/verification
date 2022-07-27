@@ -1,8 +1,15 @@
 use crate::types::Mismatch;
 
 use super::version::Version;
+use crate::scheduler;
 use async_trait::async_trait;
 use bytes::Bytes;
+use cron::Schedule;
+use parking_lot::{
+    lock_api::{RwLock, RwLockReadGuard, RwLockWriteGuard},
+    RawRwLock,
+};
+use len_trait::Len;
 use primitive_types::H256;
 use sha2::{Digest, Sha256};
 use std::{
@@ -10,6 +17,7 @@ use std::{
     io::ErrorKind,
     os::unix::prelude::OpenOptionsExt,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 use thiserror::Error;
 
@@ -31,6 +39,90 @@ pub enum FetchError {
 pub trait Fetcher: Send + Sync {
     async fn fetch(&self, ver: &Version) -> Result<PathBuf, FetchError>;
     fn all_versions(&self) -> Vec<Version>;
+}
+
+#[async_trait]
+pub trait VersionsFetcher: Send + Sync + 'static {
+    type Response: Len;
+    type Error: std::fmt::Display;
+
+    async fn fetch_versions(&self) -> Result<Self::Response, Self::Error>;
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct RefreshableVersions<T> {
+    versions: Arc<parking_lot::RwLock<T>>,
+}
+
+impl<T> RefreshableVersions<T> {
+    pub fn new(inner: T) -> Self {
+        RefreshableVersions {
+            versions: Arc::new(RwLock::new(inner)),
+        }
+    }
+
+    pub fn read(&self) -> RwLockReadGuard<'_, RawRwLock, T> {
+        self.versions.read()
+    }
+
+    pub fn write(&self) -> RwLockWriteGuard<'_, RawRwLock, T> {
+        self.versions.write()
+    }
+
+    pub fn spawn_refresh_job<Fetcher>(
+        self,
+        fetcher: Fetcher,
+        cron_schedule: Schedule,
+    ) where
+        T: Clone + PartialEq + Send + Sync + 'static + Len,
+        Fetcher: VersionsFetcher<Response = T> + Clone,
+    {
+        log::info!("spawn version refresh job");
+        scheduler::spawn_job(cron_schedule, "refresh compiler version", move || {
+            let versions = self.clone();
+            let fetcher = fetcher.clone();
+            async move {
+                log::info!("looking for new compilers versions");
+                let refresh_result = fetcher.fetch_versions().await;
+                match refresh_result {
+                    Ok(fetched_versions) => {
+                        versions.update_versions(fetched_versions);
+                    }
+                    Err(err) => {
+                        log::error!("error during version refresh: {}", err);
+                    }
+                }
+            }
+        });
+    }
+
+    fn update_versions(&self, new: T)
+    where
+        T: PartialEq + Len,
+    {
+        let need_to_update = {
+            let old = self.read();
+            new != *old
+        };
+        if need_to_update {
+            let (old_len, new_len) = {
+                // we don't need to check condition again,
+                // we can just override the value
+                let mut old = self.write();
+                let old_len = old.len();
+                let new_len = new.len();
+                *old = new;
+                (old_len, new_len)
+            };
+            log::info!(
+                "found new compiler versions. old length: {}, new length: {}",
+                old_len,
+                new_len,
+            );
+        } else {
+            log::info!("no new versions found")
+        }
+    }
 }
 
 #[cfg(target_family = "unix")]
@@ -92,35 +184,6 @@ pub async fn write_executable(
     save_result??;
 
     Ok(file)
-}
-
-pub fn update_compilers<T: PartialEq>(
-    value: &parking_lot::RwLock<T>,
-    new: T,
-    sizer: impl Fn(&T) -> usize,
-) {
-    let need_to_update = {
-        let old = value.read();
-        new != *old
-    };
-    if need_to_update {
-        let (old_len, new_len) = {
-            // we don't need to check condition again,
-            // we can just override the value
-            let mut old = value.write();
-            let old_len = sizer(&old);
-            let new_len = sizer(&new);
-            *old = new;
-            (old_len, new_len)
-        };
-        log::info!(
-            "found new compiler versions. old length: {}, new length: {}",
-            old_len,
-            new_len,
-        );
-    } else {
-        log::info!("no new versions found")
-    }
 }
 
 #[cfg(test)]

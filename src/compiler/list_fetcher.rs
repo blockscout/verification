@@ -1,13 +1,13 @@
 use super::fetcher::FetchError;
-use crate::{
-    compiler::{fetcher::update_compilers, Fetcher, Version},
-    scheduler,
+use crate::compiler::{
+    fetcher::{RefreshableVersions, VersionsFetcher},
+    Fetcher, Version,
 };
 use async_trait::async_trait;
 use bytes::Bytes;
 use cron::Schedule;
 use primitive_types::H256;
-use std::{collections::HashMap, fmt::Debug, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, fmt::Debug, path::PathBuf};
 use thiserror::Error;
 use url::Url;
 
@@ -36,7 +36,7 @@ impl TryFrom<(json::FileInfo, &Url)> for FileInfo {
 }
 
 #[derive(Error, Debug)]
-enum ListError {
+pub enum ListError {
     #[error("fetching list json returned error: {0}")]
     ListJsonFetch(reqwest::Error),
     #[error("cannot parse list json file: {0}")]
@@ -45,36 +45,18 @@ enum ListError {
     Path(url::ParseError),
 }
 
-#[derive(Default, Clone)]
-struct Versions(Arc<parking_lot::RwLock<VersionsMap>>);
+#[derive(Clone, Debug)]
+struct ListVersionsFetcher {
+    url: Url,
+}
 
-impl Versions {
-    fn spawn_refresh_job(self, list_url: Url, cron_schedule: Schedule) {
-        log::info!("spawn version refresh job");
-        scheduler::spawn_job(cron_schedule, "refresh compiler versions", move || {
-            let list_url = list_url.clone();
-            let versions = self.clone();
-            async move {
-                log::info!("looking for new compilers versions");
-                let refresh_result = Self::fetch_versions(&list_url).await;
-                match refresh_result {
-                    Ok(fetched_versions) => {
-                        update_compilers(&versions.0, fetched_versions, |list| list.len());
-                    }
-                    Err(err) => {
-                        log::error!("error during version refresh: {}", err);
-                    }
-                }
-            }
-        });
+impl ListVersionsFetcher {
+    fn new(url: Url) -> Self {
+        Self { url }
     }
 
-    async fn fetch_versions(list_url: &Url) -> Result<VersionsMap, ListError> {
-        Self::parse_json_versions(Self::fetch_json_versions(list_url).await?, list_url)
-    }
-
-    async fn fetch_json_versions(list_url: &Url) -> Result<json::List, ListError> {
-        reqwest::get(list_url.as_str())
+    async fn fetch_json_versions(&self) -> Result<json::List, ListError> {
+        reqwest::get(self.url.clone())
             .await
             .map_err(ListError::ListJsonFetch)?
             .json()
@@ -82,24 +64,31 @@ impl Versions {
             .map_err(ListError::ParseListJson)
     }
 
-    fn parse_json_versions(
-        list_json: json::List,
-        list_url: &Url,
-    ) -> Result<VersionsMap, ListError> {
+    fn parse_json_versions(&self, list_json: json::List) -> Result<VersionsMap, ListError> {
         let mut versions = HashMap::default();
         for json_compiler_info in list_json.builds {
             let version = json_compiler_info.long_version.clone();
             let file_info =
-                FileInfo::try_from((json_compiler_info, list_url)).map_err(ListError::Path)?;
+                FileInfo::try_from((json_compiler_info, &self.url)).map_err(ListError::Path)?;
             versions.insert(version, file_info);
         }
         Ok(versions)
     }
 }
 
+#[async_trait]
+impl VersionsFetcher for ListVersionsFetcher {
+    type Response = VersionsMap;
+    type Error = ListError;
+
+    async fn fetch_versions(&self) -> Result<Self::Response, Self::Error> {
+        self.parse_json_versions(self.fetch_json_versions().await?)
+    }
+}
+
 #[derive(Default)]
 pub struct ListFetcher {
-    versions: Versions,
+    versions: RefreshableVersions<VersionsMap>,
     folder: PathBuf,
 }
 
@@ -109,19 +98,19 @@ impl ListFetcher {
         folder: PathBuf,
         refresh_schedule: Option<Schedule>,
     ) -> anyhow::Result<Self> {
-        let versions = Versions::fetch_versions(&list_url).await?;
-        let versions = Versions(Arc::new(parking_lot::RwLock::new(versions)));
+        let versions_fetcher = ListVersionsFetcher::new(list_url);
+        let versions = RefreshableVersions::new(versions_fetcher.fetch_versions().await?);
         if let Some(cron_schedule) = refresh_schedule {
             versions
                 .clone()
-                .spawn_refresh_job(list_url.clone(), cron_schedule)
+                .spawn_refresh_job(versions_fetcher,cron_schedule)
         }
         Ok(Self { versions, folder })
     }
 
     async fn fetch_file(&self, ver: &Version) -> Result<(Bytes, H256), FetchError> {
         let file_info = {
-            let versions = self.versions.0.read();
+            let versions = self.versions.read();
             versions
                 .get(ver)
                 .cloned()
@@ -149,7 +138,7 @@ impl Fetcher for ListFetcher {
     }
 
     fn all_versions(&self) -> Vec<Version> {
-        let versions = self.versions.0.read();
+        let versions = self.versions.read();
         versions.iter().map(|(ver, _)| ver.clone()).collect()
     }
 }
@@ -283,7 +272,7 @@ mod tests {
     fn parse_versions() {
         let list_json_file: json::List = serde_json::from_str(DEFAULT_LIST_JSON).unwrap();
         let download_url = Url::from_str(DEFAULT_DOWNLOAD_PREFIX).expect("valid url");
-        let verions = Versions::parse_json_versions(list_json_file, &download_url).unwrap();
+        let verions = RefreshableVersions::parse_json_versions(list_json_file, &download_url).unwrap();
         assert_has_version(
             &verions,
             "0.8.15-nightly.2022.5.27+commit.095cc647",
