@@ -86,9 +86,9 @@ impl VersionsFetcher for ListVersionsFetcher {
     }
 }
 
-#[derive(Default)]
+// #[derive(Default)]
 pub struct ListFetcher {
-    versions: RefreshableVersions<VersionsMap>,
+    versions: RefreshableVersions<ListVersionsFetcher>,
     folder: PathBuf,
 }
 
@@ -99,11 +99,9 @@ impl ListFetcher {
         refresh_schedule: Option<Schedule>,
     ) -> anyhow::Result<Self> {
         let versions_fetcher = ListVersionsFetcher::new(list_url);
-        let versions = RefreshableVersions::new(versions_fetcher.fetch_versions().await?);
+        let versions = RefreshableVersions::new(versions_fetcher).await?;
         if let Some(cron_schedule) = refresh_schedule {
-            versions
-                .clone()
-                .spawn_refresh_job(versions_fetcher,cron_schedule)
+            versions.clone().spawn_refresh_job(cron_schedule)
         }
         Ok(Self { versions, folder })
     }
@@ -272,7 +270,8 @@ mod tests {
     fn parse_versions() {
         let list_json_file: json::List = serde_json::from_str(DEFAULT_LIST_JSON).unwrap();
         let download_url = Url::from_str(DEFAULT_DOWNLOAD_PREFIX).expect("valid url");
-        let verions = RefreshableVersions::parse_json_versions(list_json_file, &download_url).unwrap();
+        let verions =
+            RefreshableVersions::parse_json_versions(list_json_file, &download_url).unwrap();
         assert_has_version(
             &verions,
             "0.8.15-nightly.2022.5.27+commit.095cc647",

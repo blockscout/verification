@@ -5,14 +5,15 @@ use crate::scheduler;
 use async_trait::async_trait;
 use bytes::Bytes;
 use cron::Schedule;
+use len_trait::Len;
 use parking_lot::{
     lock_api::{RwLock, RwLockReadGuard, RwLockWriteGuard},
     RawRwLock,
 };
-use len_trait::Len;
 use primitive_types::H256;
 use sha2::{Digest, Sha256};
 use std::{
+    fmt,
     fs::{File, OpenOptions},
     io::ErrorKind,
     os::unix::prelude::OpenOptionsExt,
@@ -44,21 +45,41 @@ pub trait Fetcher: Send + Sync {
 #[async_trait]
 pub trait VersionsFetcher: Send + Sync + 'static {
     type Response;
-    type Error: std::fmt::Display;
+    type Error: fmt::Display;
 
     async fn fetch_versions(&self) -> Result<Self::Response, Self::Error>;
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct RefreshableVersions<T> {
-    versions: Arc<parking_lot::RwLock<T>>,
+#[derive(Clone)]
+pub struct RefreshableVersions<Fetcher: VersionsFetcher> {
+    fetcher: Fetcher,
+    versions: Arc<parking_lot::RwLock<<Fetcher as VersionsFetcher>::Response>>,
 }
 
-impl<T> RefreshableVersions<T> {
-    pub fn new(inner: T) -> Self {
-        RefreshableVersions {
+impl<Fetcher> fmt::Debug for RefreshableVersions<Fetcher>
+where
+    Fetcher: VersionsFetcher + fmt::Debug,
+    <Fetcher as VersionsFetcher>::Response: fmt::Debug,
+{
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("RefreshableVersions")
+            .field("fetcher", &format_args!("{:?}", self.fetcher))
+            .field("versions", &format_args!("{:?}", self.versions))
+            .finish()
+    }
+}
+
+impl<Fetcher, T> RefreshableVersions<Fetcher>
+where
+    Fetcher: VersionsFetcher<Response = T>,
+{
+    pub async fn new(fetcher: Fetcher) -> Result<Self, Fetcher::Error> {
+        let inner = fetcher.fetch_versions().await?;
+        Ok(RefreshableVersions {
+            fetcher,
+
             versions: Arc::new(RwLock::new(inner)),
-        }
+        })
     }
 
     pub fn read(&self) -> RwLockReadGuard<'_, RawRwLock, T> {
@@ -69,18 +90,15 @@ impl<T> RefreshableVersions<T> {
         self.versions.write()
     }
 
-    pub fn spawn_refresh_job<Fetcher>(
-        self,
-        fetcher: Fetcher,
-        cron_schedule: Schedule,
-    ) where
-        T: Clone + PartialEq + Send + Sync + 'static + Len,
-        Fetcher: VersionsFetcher<Response = T> + Clone,
+    pub fn spawn_refresh_job(self, cron_schedule: Schedule)
+    where
+        T: PartialEq + Send + Sync + Len,
+        Fetcher: Clone,
     {
         log::info!("spawn version refresh job");
         scheduler::spawn_job(cron_schedule, "refresh compiler version", move || {
             let versions = self.clone();
-            let fetcher = fetcher.clone();
+            let fetcher = self.fetcher.clone();
             async move {
                 log::info!("looking for new compilers versions");
                 let refresh_result = fetcher.fetch_versions().await;

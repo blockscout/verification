@@ -52,7 +52,7 @@ impl VersionsFetcher for S3VersionsFetcher {
 pub struct S3Fetcher {
     bucket: Arc<Bucket>,
     folder: PathBuf,
-    versions: RefreshableVersions<HashSet<Version>>,
+    versions: RefreshableVersions<S3VersionsFetcher>,
 }
 
 fn spawn_fetch_s3(
@@ -83,11 +83,9 @@ impl S3Fetcher {
         refresh_schedule: Option<Schedule>,
     ) -> anyhow::Result<S3Fetcher> {
         let versions_fetcher = S3VersionsFetcher::new(bucket.clone());
-        let versions = RefreshableVersions::new(versions_fetcher.fetch_versions().await?);
+        let versions = RefreshableVersions::new(versions_fetcher).await?;
         if let Some(cron_schedule) = refresh_schedule {
-            versions
-                .clone()
-                .spawn_refresh_job(versions_fetcher, cron_schedule)
+            versions.clone().spawn_refresh_job(cron_schedule)
         }
         Ok(S3Fetcher {
             bucket,
