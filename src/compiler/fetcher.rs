@@ -43,7 +43,7 @@ pub trait Fetcher: Send + Sync {
 
 #[async_trait]
 pub trait VersionsFetcher: Send + Sync + 'static {
-    type Response: Len;
+    type Response;
     type Error: std::fmt::Display;
 
     async fn fetch_versions(&self) -> Result<Self::Response, Self::Error>;

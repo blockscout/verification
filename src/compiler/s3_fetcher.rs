@@ -107,7 +107,6 @@ impl S3Fetcher {
         let folder = PathBuf::from(ver.to_string());
         let data = spawn_fetch_s3(self.bucket.clone(), folder.join("solc"));
         let hash = spawn_fetch_s3(self.bucket.clone(), folder.join("sha256.hash"));
-        let hash = hash.await;
         let (data, hash) = futures::join!(data, hash);
         let (hash, status_code) = hash??;
         if status_code != 200 {
