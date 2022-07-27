@@ -1,8 +1,4 @@
-use super::fetcher::FetchError;
-use crate::compiler::{
-    fetcher::{RefreshableVersions, VersionsFetcher},
-    Fetcher, Version,
-};
+use super::{fetcher::FetchError, Fetcher, RefreshableVersions, Version, VersionsFetcher};
 use async_trait::async_trait;
 use bytes::Bytes;
 use cron::Schedule;
@@ -86,7 +82,7 @@ impl VersionsFetcher for ListVersionsFetcher {
     }
 }
 
-// #[derive(Default)]
+#[derive(Clone, Debug)]
 pub struct ListFetcher {
     versions: RefreshableVersions<ListVersionsFetcher>,
     folder: PathBuf,

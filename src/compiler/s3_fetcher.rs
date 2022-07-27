@@ -1,5 +1,4 @@
-use super::{fetcher::FetchError, Fetcher, Version};
-use crate::compiler::fetcher::{RefreshableVersions, VersionsFetcher};
+use super::{fetcher::FetchError, Fetcher, RefreshableVersions, Version, VersionsFetcher};
 use async_trait::async_trait;
 use bytes::Bytes;
 use cron::Schedule;
@@ -28,8 +27,8 @@ impl S3VersionsFetcher {
 
 #[async_trait]
 impl VersionsFetcher for S3VersionsFetcher {
-    type Error = ListError;
     type Response = HashSet<Version>;
+    type Error = ListError;
 
     async fn fetch_versions(&self) -> Result<Self::Response, Self::Error> {
         let folders = self
@@ -49,6 +48,7 @@ impl VersionsFetcher for S3VersionsFetcher {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct S3Fetcher {
     bucket: Arc<Bucket>,
     folder: PathBuf,
