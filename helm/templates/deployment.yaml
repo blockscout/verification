@@ -26,7 +26,7 @@ spec:
             {{- toYaml .Values.securityContext | nindent 12 }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["-c", "/app/config.toml"]
+          args: ["-c", "/app/config/config.toml"]
           ports:
             - name: http
               containerPort: {{ .Values.containerPort }}
@@ -43,7 +43,7 @@ spec:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
           - name: config
-            mountPath: "/app/config.toml"
+            mountPath: /app/config
             readOnly: true
       {{- with .Values.nodeSelector }}
       nodeSelector:

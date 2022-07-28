@@ -1,7 +1,6 @@
 replicaCount: 1
 image:
-  # Currently it is not deployed to any registry
-  repository: blockscout/verification
+  repository: ghcr.io/blockscout/verification
   pullPolicy: IfNotPresent
 containerPort: 8043
 
